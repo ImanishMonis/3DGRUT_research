@@ -344,7 +344,7 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             # self.mask_paths.append(os.path.splitext(image_path)[0] + "_mask.png")    ###
 
             relative_image_path = extr.name
-            mask_path = os.path.join(self.path,"masks",os.path.splitext(relative_image_path)[0] +".png")
+            mask_path = os.path.join(self.path,"masks",os.path.splitext(relative_image_path)[0] +"_mask.png")
             self.mask_paths.append(mask_path)  
         self.camera_centers = np.array(cam_centers)
         _, diagonal = get_center_and_diag(self.camera_centers)
