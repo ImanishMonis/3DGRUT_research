@@ -1,4 +1,5 @@
 **__pycache__
+*.py[cod]
 .vscode
 CLAUDE.md
 .polyscope.ini
@@ -9,16 +10,19 @@ runs/
 extra_info/
 wandb/
 outputs/
-extra_info/
+# extra_info/
 eval/
-extra_info/
+# extra_info/
+grid_search/
+data/
+*.ply
 
 debug_**
 
 utils/ngc/grid_search_configs
 
 imgui.ini
-data
+# data
 
 thirdparty/kaolin/
 
@@ -27,7 +31,7 @@ threedgrt_tracer/include/3dgrt/kernels/slang/*.cuh*
 *.egg-info
 .idea
 
-grid_search
+# grid_search
 
 libs/
 results/
@@ -39,3 +43,6 @@ assets/nvidia-hq.gif
 assets/playground_glass.gif
 
 uv.lock
+
+commands.txt
+thirdparty/ppisp/

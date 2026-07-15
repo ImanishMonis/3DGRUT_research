@@ -42,7 +42,7 @@ class Renderer:
         path="",
         save_gt=True,
         writer=None,
-        compute_extra_metrics=True,
+        compute_extra_metrics=False,
         post_processing=None,
     ) -> None:
 
@@ -88,7 +88,7 @@ class Renderer:
 
     @classmethod
     def from_checkpoint(
-        cls, checkpoint_path, out_dir, path="", save_gt=True, writer=None, model=None, computes_extra_metrics=True
+        cls, checkpoint_path, out_dir, path="", save_gt=True, writer=None, model=None, computes_extra_metrics=False
     ):
         """Loads checkpoint for test path.
         If path is stated, it will override the test path in checkpoint.
@@ -237,12 +237,22 @@ class Renderer:
             # Compute the outputs of a single batch
             outputs = self.model(gpu_batch)
 
+            mask = gpu_batch.mask.to(outputs["pred_rgb"].device).float()
+
+            # if hasattr(gpu_batch, "mask"):
+            #     mask = gpu_batch.mask.to(outputs["pred_rgb"].device).float()
+            #     pred_rgb_full = outputs["pred_rgb"] * mask
+            #     rgb_gt_full = gpu_batch.rgb_gt * mask
+            # else:
+            #     pred_rgb_full = outputs["pred_rgb"]
+            #     rgb_gt_full = gpu_batch.rgb_gt
+
             # Apply post-processing
             if self.post_processing is not None:
                 outputs = apply_post_processing(self.post_processing, outputs, gpu_batch, training=False)
 
-            pred_rgb_full = outputs["pred_rgb"]
-            rgb_gt_full = gpu_batch.rgb_gt
+            pred_rgb_full = outputs["pred_rgb"].mul(mask)
+            rgb_gt_full = gpu_batch.rgb_gt.mul(mask)
 
             # The values are already alpha composited with the background
             torchvision.utils.save_image(
@@ -259,7 +269,7 @@ class Renderer:
                 )
 
             # Compute the loss
-            psnr_single_img = criterions["psnr"](outputs["pred_rgb"], gpu_batch.rgb_gt).item()
+            psnr_single_img = criterions["psnr"](pred_rgb_full, rgb_gt_full).item()
             psnr.append(psnr_single_img)  # evaluation on valid rays only
             logger.info(f"Frame {iteration}, PSNR: {psnr[-1]}")
 
@@ -274,39 +284,95 @@ class Renderer:
                 worst_psnr_img_gt = gt_img_to_write
 
             # evaluate on full image
-            ssim.append(
-                criterions["ssim"](
-                    pred_rgb_full.permute(0, 3, 1, 2),
-                    rgb_gt_full.permute(0, 3, 1, 2),
-                ).item()
-            )
-            lpips.append(
-                criterions["lpips"](
-                    pred_rgb_full.clip(0, 1).permute(0, 3, 1, 2),
-                    rgb_gt_full.permute(0, 3, 1, 2),
-                ).item()
-            )
+            # ssim.append(
+            #     criterions["ssim"](
+            #         pred_rgb_full.permute(0, 3, 1, 2),
+            #         rgb_gt_full.permute(0, 3, 1, 2),
+            #     ).item()
+            # )
+
+            ########################### edited from here 
+            if "ssim" in criterions:
+               ssim.append(
+                   criterions["ssim"](
+                        pred_rgb_full.permute(0, 3, 1, 2),
+                        rgb_gt_full.permute(0, 3, 1, 2),
+                    ).item()
+                )
+            else:
+                ssim.append(0.0)
+            ########################### till here 
+
+            # lpips.append(
+            #     criterions["lpips"](
+            #         pred_rgb_full.clip(0, 1).permute(0, 3, 1, 2),
+            #         rgb_gt_full.permute(0, 3, 1, 2),
+            #     ).item()
+            # )
+
+            ######################### Edited from here 
+            if "lpips" in criterions:
+                lpips.append(
+                    criterions["lpips"](
+                        pred_rgb_full.clip(0, 1).permute(0, 3, 1, 2),
+                        rgb_gt_full.permute(0, 3, 1, 2),
+                    ).item()
+                )
+            else:
+                lpips.append(0.0)
+            ######################### till here 
+
 
             # Color-corrected metrics
             pred_rgb_cc = color_correct_affine(pred_rgb_full, rgb_gt_full)
             cc_psnr.append(criterions["psnr"](pred_rgb_cc, rgb_gt_full).item())
-            cc_ssim.append(
+            # cc_ssim.append(
+            #     criterions["ssim"](
+            #         pred_rgb_cc.permute(0, 3, 1, 2),
+            #         rgb_gt_full.permute(0, 3, 1, 2),
+            #     ).item()
+            # )
+            # cc_lpips.append(
+            #     criterions["lpips"](
+            #         pred_rgb_cc.clip(0, 1).permute(0, 3, 1, 2),
+            #         rgb_gt_full.permute(0, 3, 1, 2),
+            #     ).item()
+            # )
+
+            ########################### edited from here
+            if "ssim" in criterions:
+                cc_ssim.append(
                 criterions["ssim"](
                     pred_rgb_cc.permute(0, 3, 1, 2),
                     rgb_gt_full.permute(0, 3, 1, 2),
                 ).item()
-            )
-            cc_lpips.append(
+                )
+            else:
+                cc_ssim.append(0.0)
+
+            if "lpips" in criterions:
+                cc_lpips.append(
                 criterions["lpips"](
                     pred_rgb_cc.clip(0, 1).permute(0, 3, 1, 2),
                     rgb_gt_full.permute(0, 3, 1, 2),
                 ).item()
             )
+            else:
+                cc_lpips.append(0.0) 
+            ########################### Till here 
 
             # Record the time
             inference_time.append(outputs["frame_time_ms"])
 
             logger.log_progress(task_name="Rendering", advance=1, iteration=f"{str(iteration)}", psnr=psnr[-1])
+
+
+            del outputs
+            del pred_rgb_full
+            del rgb_gt_full
+            del gpu_batch
+            del mask
+            torch.cuda.empty_cache()
 
         logger.end_progress(task_name="Rendering")
 

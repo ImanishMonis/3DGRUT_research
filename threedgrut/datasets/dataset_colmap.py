@@ -46,6 +46,8 @@ from .utils import (
     read_colmap_intrinsics_text,
 )
 
+from threedgrut.utils.camera import compute_max_angle
+
 
 class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
     def __init__(
@@ -101,7 +103,7 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
 
         # numpy str array of image paths and mask paths
         self.image_paths = self.image_paths[indices]
-        self.mask_paths = self.mask_paths[indices]
+        self.mask_paths = self.mask_paths[indices]  ###
 
         self.camera_centers = self.camera_centers[indices]
         self.center, self.length_scale, self.scene_bbox = self.compute_spatial_extents()
@@ -218,10 +220,12 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             focal_length = params[0:2].astype(np.float32)
             radial_coeffs = params[4:].astype(np.float32)
             # Estimate max angle for fisheye
-            max_radius_pixels = compute_max_radius(resolution.astype(np.float64), principal_point)
-            fov_angle_x = 2.0 * max_radius_pixels / focal_length[0]
-            fov_angle_y = 2.0 * max_radius_pixels / focal_length[1]
-            max_angle = np.max([fov_angle_x, fov_angle_y]) / 2.0
+            # max_radius_pixels = compute_max_radius(resolution.astype(np.float64), principal_point)
+            # fov_angle_x = 2.0 * max_radius_pixels / focal_length[0]
+            # fov_angle_y = 2.0 * max_radius_pixels / focal_length[1]
+            # max_angle = np.max([fov_angle_x, fov_angle_y]) / 2.0
+
+            max_angle = compute_max_angle(resolution,focal_length,principal_point,radial_coeffs)
 
             params = OpenCVFisheyeCameraModelParameters(
                 principal_point=principal_point,
@@ -316,7 +320,8 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         # Load poses and paths
         self.poses = []
         self.image_paths = []
-        self.mask_paths = []
+        self.mask_paths = [] ###
+        # self.mask_path = os.path.join(self.path,"mask", "mask.png")
 
         cam_centers = []
         for extr in logger.track(
@@ -336,8 +341,11 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
 
             image_path = os.path.join(self.path, self.get_images_folder(), extr.name)
             self.image_paths.append(image_path)
-            self.mask_paths.append(os.path.splitext(image_path)[0] + "_mask.png")
+            # self.mask_paths.append(os.path.splitext(image_path)[0] + "_mask.png")    ###
 
+            relative_image_path = extr.name
+            mask_path = os.path.join(self.path,"masks",os.path.splitext(relative_image_path)[0] +".png")
+            self.mask_paths.append(mask_path)  
         self.camera_centers = np.array(cam_centers)
         _, diagonal = get_center_and_diag(self.camera_centers)
         self.cameras_extent = diagonal * 1.1
@@ -345,7 +353,7 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         self.poses = np.stack(self.poses)
 
         self.image_paths = np.stack(self.image_paths, dtype=str)
-        self.mask_paths = np.stack(self.mask_paths, dtype=str)
+        self.mask_paths = np.stack(self.mask_paths, dtype=str)   ####
 
     def _lazy_worker_intrinsics_cache(self):
         """Create intrinsics cache for a specific worker."""
@@ -498,6 +506,12 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         if os.path.exists(mask_path := self.mask_paths[idx]):
             mask = torch.from_numpy(np.array(Image.open(mask_path).convert("L"))).reshape(1, actual_h, actual_w, 1)
             output_dict["mask"] = mask
+
+        # if os.path.exists(self.mask_path):
+        #     mask = torch.from_numpy(
+        #         np.array(Image.open(self.mask_path).convert("L"))
+        #     ).reshape(1, actual_h, actual_w, 1)
+        #     output_dict["mask"] = mask
 
         # Add EXIF exposure if available for this frame
         if self.exif_exposures is not None and self.exif_exposures[idx] is not None:
