@@ -7,11 +7,27 @@
   <img width="100%" src="assets/nvidia-hq-playground.gif">
 </p>
 
-This repository provides the official implementations of **3D Gaussian Ray Tracing (3DGRT)** and **3D Gaussian Unscented Transform (3DGUT)**. Unlike traditional methods that rely on splatting, 3DGRT performs ray tracing of volumetric Gaussian particles instead. This enables support for distorted cameras with complex, time-dependent effects such as rolling shutters, while also efficiently simulating secondary rays required for rendering phenomena like reflection, refraction, and shadows. However, 3DGRT requires dedicated ray-tracing hardware and remains slower than 3DGS.
+## About this Repository
 
-To mitigate this limitation, we also propose 3DGUT, which enables support for distorted cameras with complex, time-dependent effects within a rasterization framework, maintaining the efficiency of rasterization methods. By aligning the rendering formulations of 3DGRT and 3DGUT, we introduce a hybrid approach called **3DGRUT**. This technique allows for rendering primary rays via rasterization and secondary rays via ray tracing, combining the strengths of both methods for improved performance and flexibility.
+This repository is a **research extension** of NVIDIA's official **3DGRT / 3DGUT** implementation.
 
-For projects that require a fast, modular, and production-ready Gaussian Splatting framework, we recommend using [gsplat](https://github.com/nerfstudio-project/gsplat), which also provides support for 3DGUT.
+The project was developed to support research on **3D scene reconstruction**, **COLMAP-based datasets**, and **robotics applications**, with additional utilities for preprocessing, training, and exporting reconstructed scenes.
+
+### Additional Features
+
+Compared to the original implementation, this repository includes:
+
+- Custom COLMAP dataset support
+- Image masking preprocessing (`apply_masks.py`)
+- PLY export utilities (`threedgrut/export_ply.py`)
+- Camera utility functions
+- Physically Plausible ISP (PPISP) integration
+- Additional training configurations
+- Example training commands (`commands.md`)
+
+> **Note:** The original implementation, documentation, and research were developed by NVIDIA. This repository extends their work for research purposes while preserving compatibility with the original project.
+
+(https://github.com/nerfstudio-project/gsplat), which also provides support for 3DGUT.
 
 > __3D Gaussian Ray Tracing: Fast Tracing of Particle Scenes__
 > [Nicolas Moenne-Loccoz*](https://www.linkedin.com/in/nicolas-moënne-loccoz-71040512/?original_referer=https%3A%2F%2Fwww%2Egoogle%2Ecom%2F&originalSubdomain=ca), [Ashkan Mirzaei*](https://ashmrz.github.io), [Or Perel](https://orperel.github.io/), [Riccardo De Lutio](https://riccardodelutio.github.io/), [Janick Martinez Esturo](https://jme.pub/),
@@ -63,7 +79,15 @@ For projects that require a fast, modular, and production-ready Gaussian Splatti
 ## 🔧 1 Dependencies and Installation
 - Supported CUDA versions: 11.8, 12.4, 12.6, 12.8 (default), 13.0 (experimental)
 - For good performance with 3DGRT, we recommend using an NVIDIA GPU with Ray Tracing (RT) cores.
-- Both Linux and Windows are supported via UV install scripts.
+- Both Linux and Windows are supported via UV install scripts.### Optional: Physically Plausible ISP
+
+This repository supports PPISP.
+
+Install:
+
+```bash
+pip install -r requirements_ppisp.txt
+```
 
 ### Option A: Using UV (Recommended)
 
@@ -72,8 +96,8 @@ For projects that require a fast, modular, and production-ready Gaussian Splatti
 [UV](https://docs.astral.sh/uv/) provides faster installation and better dependency resolution.
 
 ```bash
-git clone --recursive https://github.com/nv-tlabs/3dgrut.git
-cd 3dgrut
+git clone --recursive https://github.com/ImanishMonis/3DGRUT_research.git
+cd 3DGRUT_research
 ```
 
 <details open>
@@ -154,6 +178,16 @@ This also sets the build environment variables (`TORCH_CUDA_ARCH_LIST`, `CUDA_HO
 
 </details>
 
+### Optional: Physically Plausible ISP (PPISP)
+
+This repository supports integration with PPISP.
+
+Install the additional dependencies with
+
+```bash
+pip install -r requirements_ppisp.txt
+```
+
 ### Option B: Using Legacy Conda Script
 
 <details>
@@ -166,8 +200,8 @@ This also sets the build environment variables (`TORCH_CUDA_ARCH_LIST`, `CUDA_HO
 > CUDA versions and handles GCC compatibility automatically.
 
 ```bash
-git clone --recursive https://github.com/nv-tlabs/3dgrut.git
-cd 3dgrut
+git clone --recursive https://github.com/ImanishMonis/3DGRUT_research.git
+cd 3DGRUT_research
 chmod +x install_env.sh
 ./install_env.sh 3dgrut
 conda activate 3dgrut
@@ -205,8 +239,8 @@ docker build --build-arg CUDA_VERSION=12.8.1 -t 3dgrut:cuda128 .
 
 Build the Docker image:
 ```bash
-git clone --recursive https://github.com/nv-tlabs/3dgrut.git
-cd 3dgrut
+git clone --recursive https://github.com/ImanishMonis/3DGRUT_research.git
+cd 3DGRUT_research
 docker build . -t 3dgrut
 ```
 
@@ -218,6 +252,38 @@ docker run -v --rm -it --gpus=all --net=host --ipc=host -v $PWD:/workspace --run
 > [!NOTE]
 > Remember to set the DISPLAY environment variable if you are running on a remote server from the command line.
 
+## 🚀 Quick Start
+
+After installation, the repository can be trained on a COLMAP dataset using
+
+```bash
+python train.py \
+    --config-name apps/colmap_3dgut.yaml \
+    path=data/frames \
+    out_dir=runs \
+    experiment_name=kitchen_opt0
+```
+
+Without evaluation metrics:
+
+```bash
+python train.py \
+    --config-name apps/colmap_3dgut.yaml \
+    path=data/frames \
+    out_dir=runs \
+    experiment_name=kitchen_opt0 \
+    compute_extra_metrics=False
+```
+
+To export a trained Gaussian model as a PLY file:
+
+```bash
+PYTHONPATH=. python -m threedgrut.export_ply \
+    --ckpt runs/kitchen_opt0/ckpt_last.pt \
+    --out scene.ply
+```
+
+Additional training examples are available in **commands.md**.
 ## 💻 2. Train 3DGRT or 3DGUT scenes
 
 We provide different configurations for training using 3DGRT and 3DGUT models on common benchmark datasets.
@@ -264,6 +330,36 @@ To enable selective Adam, use:
 python train.py --config-name apps/colmap_3dgrt.yaml path=data/mipnerf360/bonsai out_dir=runs experiment_name=bonsai_3dgrt dataset.downsample_factor=2 optimizer.type=selective_adam
 python train.py --config-name apps/colmap_3dgut.yaml path=data/mipnerf360/bonsai out_dir=runs experiment_name=bonsai_3dgut dataset.downsample_factor=2 optimizer.type=selective_adam
 ```
+
+## Quick Start
+
+Train:
+
+```bash
+python train.py --config-name apps/colmap_3dgut.yaml \
+    path=data/frames \
+    out_dir=runs \
+    experiment_name=kitchen_opt0
+```
+
+Without evaluation metrics:
+
+```bash
+python train.py --config-name apps/colmap_3dgut.yaml \
+    path=data/frames \
+    out_dir=runs \
+    experiment_name=kitchen_opt0 \
+    compute_extra_metrics=False
+```
+
+Export a PLY file:
+
+```bash
+PYTHONPATH=. python -m threedgrut.export_ply \
+    --ckpt runs/kitchen_opt0/ckpt_last.pt \
+    --out scene.ply
+```
+Additional commands are available in `commands.md`.
 
 If you use MCMC and Selective Adam in your research, please cite [3dgs-mcmc](https://github.com/ubc-vision/3dgs-mcmc), [taming-3dgs](https://github.com/humansensinglab/taming-3dgs),
 and the [gSplat](https://github.com/nerfstudio-project/gsplat/tree/main) library from which the code was adopted (links to the code are provided in the source files).
@@ -318,6 +414,16 @@ Optional flags:
 - `--set_collision` — enable collision on mesh prims.
 - `--set_invisible` — make mesh prims invisible.
 - `--referencing_usd` — specify which USD file in the package to modify (default: auto-detect the one with a Volume prim).
+
+## 📦 Exporting Gaussian Models
+
+This repository provides an additional utility for exporting trained Gaussian models to PLY format.
+
+```bash
+PYTHONPATH=. python -m threedgrut.export_ply \
+    --ckpt runs/kitchen_opt0/ckpt_last.pt \
+    --out scene.ply
+```
 
 ## 🎥 3. Rendering from Checkpoints
 Evaluate a checkpoint with splatting, the OptiX tracer, or PyTorch:
@@ -529,7 +635,7 @@ See [Playground README](threedgrut_playground/README.md) for details.
 
 ## 📄 6. Contributing
 
-Contributions are welcome! Please feel free to submit a pull request.
+Contributions, bug reports, and suggestions are welcome. Feel free to open an issue or submit a pull request if you have improvements or fixes.
 
 Formatting uses `black` and `isort`. Please run
 `black . --target-version=py311 --line-length=120 --exclude=thirdparty/tiny-cuda-nn` and
@@ -564,3 +670,10 @@ Greg Muthler, Magnus Andersson, Maksim Eisenstein, Tanki Zhang, Nathan Morrical,
 Thomas Müller, Merlin Nimier-David, and Carsten Kolve for inspiration and pointers.
 Ziyu Chen, Clement Fuji-Tsang, Masha Shugrina, and George Kopanas for technical & experiment assistance,
 and to Ramana Kiran and Shailesh Mishra for typo fixes.
+## Original Repository
+
+This project is based on NVIDIA's official **3DGRUT** implementation:
+
+https://github.com/nv-tlabs/3dgrut
+
+Please consider citing the original papers if you use this repository in your research.
