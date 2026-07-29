@@ -46,3 +46,5 @@ uv.lock
 
 commands.txt
 thirdparty/ppisp/
+
+custom_render/
