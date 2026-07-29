@@ -16,6 +16,7 @@
 import json
 import os
 from pathlib import Path
+from PIL import Image
 
 import numpy as np
 import torch
@@ -229,6 +230,18 @@ class Renderer:
 
         logger.start_progress(task_name="Rendering", total_steps=len(self.dataloader), color="orange1")
 
+        mask_path = os.path.join(self.dataset.path, "render_mask.png")
+        global_mask = None
+
+        if os.path.exists(mask_path):
+            global_mask = torch.from_numpy(
+                np.array(Image.open(mask_path).convert("L"))
+            ).float() / 255.0
+
+            global_mask = (global_mask > 0.5).float()
+            global_mask = global_mask.unsqueeze(0).unsqueeze(-1).to("cuda")
+
+
         for iteration, batch in enumerate(self.dataloader):
 
             # Get the GPU-cached batch
@@ -237,8 +250,8 @@ class Renderer:
             # Compute the outputs of a single batch
             outputs = self.model(gpu_batch)
 
-            mask = gpu_batch.mask.to(outputs["pred_rgb"].device).float()
-
+            # mask = gpu_batch.mask.to(outputs["pred_rgb"].device).float()
+                    # mask = global_mask.to(outputs["pred_rgb"].device)
             # if hasattr(gpu_batch, "mask"):
             #     mask = gpu_batch.mask.to(outputs["pred_rgb"].device).float()
             #     pred_rgb_full = outputs["pred_rgb"] * mask
@@ -251,8 +264,13 @@ class Renderer:
             if self.post_processing is not None:
                 outputs = apply_post_processing(self.post_processing, outputs, gpu_batch, training=False)
 
-            pred_rgb_full = outputs["pred_rgb"].mul(mask)
-            rgb_gt_full = gpu_batch.rgb_gt.mul(mask)
+            if global_mask is not None:
+                mask = global_mask.to(outputs["pred_rgb"].device)
+                pred_rgb_full = outputs["pred_rgb"].mul(mask)
+                rgb_gt_full = gpu_batch.rgb_gt.mul(mask)
+            else:
+                pred_rgb_full = outputs["pred_rgb"]
+                rgb_gt_full = gpu_batch.rgb_gt
 
             # The values are already alpha composited with the background
             torchvision.utils.save_image(

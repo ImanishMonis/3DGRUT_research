@@ -241,6 +241,43 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             rays_d_cam = camera_model.image_points_to_camera_rays(image_points)
             rays_o_cam = torch.zeros_like(rays_d_cam)
             pixel_coords = create_pixel_coords(w, h)
+
+            # print("\n----- Image Points -----")   ### print added 
+            # print("Center:", image_points[(h // 2) * w + (w // 2)])
+            # print("Top-left:", image_points[0])
+            # print("Top-right:", image_points[w - 1])
+            # print("Bottom-left:", image_points[(h - 1) * w])
+            # print("Bottom-right:", image_points[h * w - 1])
+            # print("\n----- Rays -----")
+            # print("Center:", rays_d_cam[(h // 2) * w + (w // 2)])
+            # print("Top-left:", rays_d_cam[0])
+            # print("Top-right:", rays_d_cam[w - 1])
+            # print("Bottom-left:", rays_d_cam[(h - 1) * w])
+            # print("Bottom-right:", rays_d_cam[h * w - 1])
+            # print('torch.min:',torch.min(rays_d_cam[:,2]))
+            # print('torch.max:',torch.max(rays_d_cam[:,2]))
+            # print('torch.isnan',torch.isnan(rays_d_cam).any())
+            # angles = torch.acos(                                      ### for print added
+            #     torch.clamp(rays_d_cam[:,2], -1, 1)
+            # )
+            # ray_norm = torch.norm(rays_d_cam, dim=1)
+
+            # cos_theta = rays_d_cam[:, 2] / ray_norm
+
+            # cos_theta = torch.clamp(cos_theta, -1.0, 1.0)
+
+            # angles = torch.rad2deg(torch.acos(cos_theta))
+
+            # print("ray norm min:", ray_norm.min())
+            # print("ray norm max:", ray_norm.max())
+            # print("angle min:", angles.min())
+            # print("angle max:", angles.max())
+            # print("nan:", torch.isnan(angles).any())
+            # print("Corner angle:",
+            #     torch.rad2deg(torch.acos(torch.clamp(rays_d_cam[0,2],-1,1))))
+
+
+            # print("Maximum ray angle:", angles.max().item()) ### print added 
             return (
                 params.to_dict(),
                 rays_o_cam.to(torch.float32).reshape(out_shape),
@@ -252,6 +289,13 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         cam_id_to_image_name = {extr.camera_id: extr.name for extr in self.cam_extrinsics}
 
         for intr in self.cam_intrinsics.values():
+
+            # print("\n====================")       ### added print 
+            # print("Intrinsic ID :", intr.id)
+            # print("Model        :", intr.model)
+            # print("Parameters   :", intr.params)
+            # print("====================")           ### added print
+
             full_width = intr.width
             full_height = intr.height
 
@@ -329,6 +373,8 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             description=f"Load Dataset ({self.split})",
             color="salmon1",
         ):
+            # print(f"Image: {extr.name:30s} | Camera ID: {extr.camera_id}")    ### added print 
+
             R = qvec_to_so3(extr.qvec)
             T = np.array(extr.tvec)
             W2C = np.zeros((4, 4), dtype=np.float32)
@@ -340,11 +386,12 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             cam_centers.append(C2W[:3, 3])
 
             image_path = os.path.join(self.path, self.get_images_folder(), extr.name)
+            # print("Loading:", image_path)   ### print added 
             self.image_paths.append(image_path)
             # self.mask_paths.append(os.path.splitext(image_path)[0] + "_mask.png")    ###
 
             relative_image_path = extr.name
-            mask_path = os.path.join(self.path,"masks",os.path.splitext(relative_image_path)[0] +"_mask.png")
+            mask_path = os.path.join(self.path,"masks",os.path.splitext(relative_image_path)[0] +".png")
             self.mask_paths.append(mask_path)  
         self.camera_centers = np.array(cam_centers)
         _, diagonal = get_center_and_diag(self.camera_centers)
@@ -525,6 +572,12 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         data = batch["data"][0].to(self.device, non_blocking=True) / 255.0
         pose = batch["pose"][0].to(self.device, non_blocking=True)
         intr = batch["intr"][0].item()
+
+        # print(                                                 ### print added 
+        #     f"Frame {batch['frame_idx'][0].item():4d}"
+        #     f" | Camera {batch['camera_idx'][0].item()}"
+        #     f" | Intrinsic {intr}"
+        # )
 
         assert data.dtype == torch.float32
         assert pose.dtype == torch.float32
