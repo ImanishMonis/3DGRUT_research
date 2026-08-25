@@ -389,7 +389,8 @@ class Renderer:
             del pred_rgb_full
             del rgb_gt_full
             del gpu_batch
-            del mask
+            if "mask" in locals():
+                del mask
             torch.cuda.empty_cache()
 
         logger.end_progress(task_name="Rendering")

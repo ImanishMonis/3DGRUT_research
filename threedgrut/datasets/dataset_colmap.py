@@ -300,9 +300,11 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             full_height = intr.height
 
             image_name = cam_id_to_image_name[intr.id]
-            image_name = (
-                os.path.join(os.path.split(image_name)[1], "") if self.get_images_folder() in image_name else image_name
-            )
+            # image_name = (
+            #     os.path.join(os.path.split(image_name)[1], "") if self.get_images_folder() in image_name else image_name
+            # )
+            if image_name.startswith("images/"):
+                image_name = image_name[len("images/"):]
             image_path = os.path.join(self.path, self.get_images_folder(), image_name)
 
             try:
@@ -385,13 +387,22 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             self.poses.append(C2W)
             cam_centers.append(C2W[:3, 3])
 
-            image_path = os.path.join(self.path, self.get_images_folder(), extr.name)
+            # image_path = os.path.join(self.path, self.get_images_folder(), extr.name)
+            image_path = os.path.join(self.path, extr.name)    
             # print("Loading:", image_path)   ### print added 
             self.image_paths.append(image_path)
             # self.mask_paths.append(os.path.splitext(image_path)[0] + "_mask.png")    ###
 
             relative_image_path = extr.name
-            mask_path = os.path.join(self.path,"masks",os.path.splitext(relative_image_path)[0] +".png")
+            # mask_path = os.path.join(self.path,"masks",os.path.splitext(relative_image_path)[0] +".png")
+            if relative_image_path.startswith("images/"):
+                relative_image_path = relative_image_path[len("images/"):]
+
+            mask_path = os.path.join(
+                self.path,
+                "masks",
+                os.path.splitext(relative_image_path)[0] + ".png"
+)
             self.mask_paths.append(mask_path)  
         self.camera_centers = np.array(cam_centers)
         _, diagonal = get_center_and_diag(self.camera_centers)
