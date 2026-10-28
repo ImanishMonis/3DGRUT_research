@@ -88,6 +88,14 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
 
         self.n_frames = len(self.cam_extrinsics)
         self.load_camera_data()
+
+        # Optional global mask (e.g. fisheye image circle), combined with every per-image mask
+        global_mask_path = os.path.join(self.path, "render_mask.png")
+        self.global_mask = None
+        if os.path.exists(global_mask_path):
+            self.global_mask = np.array(Image.open(global_mask_path).convert("L"))
+            logger.info(f"Using global mask {global_mask_path} in addition to per-image masks")
+
         indices = np.arange(self.n_frames)
 
         # If test_split_interval is set, every test_split_interval frame will be excluded from the training set
@@ -560,10 +568,20 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             "frame_idx": idx,
         }
 
-        # Only add mask to dictionary if it exists
+        # Combine the per-image mask and the global mask (a pixel is kept only if both keep it)
+        mask = None
         if os.path.exists(mask_path := self.mask_paths[idx]):
-            mask = torch.from_numpy(np.array(Image.open(mask_path).convert("L"))).reshape(1, actual_h, actual_w, 1)
-            output_dict["mask"] = mask
+            mask = np.array(Image.open(mask_path).convert("L"))
+        if self.global_mask is not None:
+            assert self.global_mask.shape == (
+                actual_h,
+                actual_w,
+            ), f"render_mask.png is {self.global_mask.shape[::-1]} but image {self.image_paths[idx]} is {(actual_w, actual_h)}"
+            mask = self.global_mask if mask is None else np.minimum(mask, self.global_mask)
+
+        # Only add mask to dictionary if it exists
+        if mask is not None:
+            output_dict["mask"] = torch.from_numpy(mask).reshape(1, actual_h, actual_w, 1)
 
         # if os.path.exists(self.mask_path):
         #     mask = torch.from_numpy(

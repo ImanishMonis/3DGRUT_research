@@ -354,6 +354,11 @@ def main():
 
     pred = outputs["pred_rgb"].squeeze(0).permute(2, 0, 1).cpu()
 
+    # Black out pixels outside the global mask (render_mask.png), e.g. outside the fisheye circle
+    global_mask = getattr(dataset, "global_mask", None)
+    if global_mask is not None:
+        pred = pred * torch.from_numpy(global_mask > 127).to(pred.dtype)
+
     out_path = os.path.join(args.out_dir, args.name)
     torchvision.utils.save_image(pred, out_path)
 

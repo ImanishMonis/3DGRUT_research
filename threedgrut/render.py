@@ -16,7 +16,6 @@
 import json
 import os
 from pathlib import Path
-from PIL import Image
 
 import numpy as np
 import torch
@@ -230,17 +229,10 @@ class Renderer:
 
         logger.start_progress(task_name="Rendering", total_steps=len(self.dataloader), color="orange1")
 
-        mask_path = os.path.join(self.dataset.path, "render_mask.png")
-        global_mask = None
-
-        if os.path.exists(mask_path):
-            global_mask = torch.from_numpy(
-                np.array(Image.open(mask_path).convert("L"))
-            ).float() / 255.0
-
-            global_mask = (global_mask > 0.5).float()
-            global_mask = global_mask.unsqueeze(0).unsqueeze(-1).to("cuda")
-
+        def masked_psnr(pred, gt, mask):
+            # PSNR over unmasked pixels only, masked pixels don't count as perfect matches
+            mse = ((pred - gt) ** 2 * mask).sum() / (mask.sum() * pred.shape[-1]).clamp(min=1)
+            return (-10.0 * torch.log10(mse)).item()
 
         for iteration, batch in enumerate(self.dataloader):
 
@@ -264,8 +256,9 @@ class Renderer:
             if self.post_processing is not None:
                 outputs = apply_post_processing(self.post_processing, outputs, gpu_batch, training=False)
 
-            if global_mask is not None:
-                mask = global_mask.to(outputs["pred_rgb"].device)
+            # Combined per-image + global (render_mask.png) mask from the dataset
+            mask = gpu_batch.mask
+            if mask is not None:
                 pred_rgb_full = outputs["pred_rgb"].mul(mask)
                 rgb_gt_full = gpu_batch.rgb_gt.mul(mask)
             else:
@@ -287,7 +280,10 @@ class Renderer:
                 )
 
             # Compute the loss
-            psnr_single_img = criterions["psnr"](pred_rgb_full, rgb_gt_full).item()
+            if mask is not None:
+                psnr_single_img = masked_psnr(pred_rgb_full, rgb_gt_full, mask)
+            else:
+                psnr_single_img = criterions["psnr"](pred_rgb_full, rgb_gt_full).item()
             psnr.append(psnr_single_img)  # evaluation on valid rays only
             logger.info(f"Frame {iteration}, PSNR: {psnr[-1]}")
 
@@ -343,7 +339,10 @@ class Renderer:
 
             # Color-corrected metrics
             pred_rgb_cc = color_correct_affine(pred_rgb_full, rgb_gt_full)
-            cc_psnr.append(criterions["psnr"](pred_rgb_cc, rgb_gt_full).item())
+            if mask is not None:
+                cc_psnr.append(masked_psnr(pred_rgb_cc, rgb_gt_full, mask))
+            else:
+                cc_psnr.append(criterions["psnr"](pred_rgb_cc, rgb_gt_full).item())
             # cc_ssim.append(
             #     criterions["ssim"](
             #         pred_rgb_cc.permute(0, 3, 1, 2),
@@ -389,8 +388,7 @@ class Renderer:
             del pred_rgb_full
             del rgb_gt_full
             del gpu_batch
-            if "mask" in locals():
-                del mask
+            del mask
             torch.cuda.empty_cache()
 
         logger.end_progress(task_name="Rendering")

@@ -52,7 +52,7 @@ This is the format teammate 2's HLoc output (+ teammate 1's masks) must be in:
 │   ├── cameras.bin             # (or cameras.txt)
 │   ├── images.bin              # (or images.txt)
 │   └── points3D.bin            # initialises the Gaussians
-└── render_mask.png             # optional, global fisheye-circle mask (fixed name) – see below
+└── render_mask.png             # optional, global mask (fixed name), 255 = keep – see below
 ```
 
 ### Rules the loader ([dataset_colmap.py](threedgrut/datasets/dataset_colmap.py)) relies on
@@ -66,15 +66,17 @@ This is the format teammate 2's HLoc output (+ teammate 1's masks) must be in:
 | Missing mask | No error – the image is silently trained **without** a mask. |
 | Poses | Standard COLMAP: `qvec = (qw, qx, qy, qz)`, `tvec`, world→camera, OpenCV camera axes (x right, y down, z forward). |
 
-### `render_mask.png` – what it actually does today
+### `render_mask.png` – global mask
 
-| Step | Masks used |
+If `<session>/render_mask.png` exists, the loader combines it with every per-image mask. A pixel is used only if **both** keep it. If an image has no mask of its own, the global mask alone is used. It must have the same size as the images.
+
+| Step | Mask used |
 |---|---|
-| Training ([trainer.py](threedgrut/trainer.py)) | **Only** the per-image masks. `render_mask.png` is **not** read. |
-| Test-split eval / PSNR ([render.py](threedgrut/render.py) `render_all`) | **Only** `render_mask.png`. It *replaces* the per-image masks, not added to them. Without the file: no mask at all. |
-| `render_ply.py` / `batch_render.py` | Neither. |
+| Training | per-image mask AND `render_mask.png` |
+| Test-split eval (`render_all`) | the same combined mask. PSNR is computed over unmasked pixels only. |
+| `render_ply.py` / `batch_render.py` | `render_mask.png` (output is black outside it) |
 
-So the fisheye circle is only applied in training if it is **already baked into the per-image masks**. That is the case for `align_t1`: 0 % of pixels outside `render_mask.png` are kept in any mask, so the masks there = circle AND dynamic. For the new data, teammate 1's masks must include the (inverted, rotated) Hilti circle too, or the loader has to combine them.
+So teammate 1 only has to provide the **dynamic** masks. The fisheye circle comes from this one file (for the new data: Hilti's `mask_cam0.png`, inverted and rotated 180°). Note: it's one file for both cameras, and the Hilti cam0/cam1 circles differ by a few pixels.
 
 ---
 
@@ -139,7 +141,7 @@ python render_ply.py --checkpoint <ckpt> --qw .. --qx .. --qy .. --qz .. \
 
 - Output: `<out_dir>/<image_id>.png`. Same resolution and fisheye intrinsics as the model's training camera.
 - `--intrinsic_id` is the **COLMAP `camera_id`** in `cameras.bin`, not the folder. The HLoc models have one shared camera → always `1`.
-- Pixels outside the fisheye circle are **not** masked in these renders. Apply `render_mask.png` (or the image mask) before comparing.
+- Pixels outside `render_mask.png` (if the training session has one) are set to black.
 
 ---
 
@@ -181,7 +183,7 @@ python render_ply.py --checkpoint <ckpt> --qw .. --qx .. --qy .. --qz .. \
 **Code / workflow**
 
 5. **`poses.json` has no record of where it came from.** Nothing in the repo writes it. The current file has the same names/IDs as `align_t1`, but it is **not** `align_t1`'s poses (mean 0.6 m, max 1.6 m apart even after best-fit alignment). It's probably the t2 session. For the new data, the file should state which session/model the poses come from.
-6. **Eval PSNR/SSIM is inflated by masks.** `render_all` zeroes masked pixels in both prediction and GT, then averages over the *whole* image. The black pixels count as perfect matches (~25 % of the frame for the circle alone), so the comment "evaluation on valid rays only" isn't true. It also ignores the dynamic masks, so people in the test images count as errors.
+6. **Eval SSIM/LPIPS still include masked pixels.** PSNR is fixed (unmasked pixels only). SSIM/LPIPS are still computed on the full image with masked pixels set to black, so they look slightly better than they are. The training-time PSNR logged to tensorboard (`psnr/train`) is unmasked.
 7. **Masks are optional without warning.** A missing or misnamed mask (e.g. `NNNN_mask.png` instead of `NNNN.png`) silently trains on people/objects.
 8. **`downsample_factor` > 1 is broken.** Intrinsics are read from `images_<N>/`, but training images always come from the full-res path in `images.bin` → size mismatch.
 9. **`batch_render.py` is slow and leaves clutter.** It starts a new Python process and reloads the checkpoint per pose, and creates one run folder per pose (102 folders in `batch_render_result/t1/tmp/`).
