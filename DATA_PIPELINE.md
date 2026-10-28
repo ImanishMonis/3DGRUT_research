@@ -27,12 +27,31 @@ Location: `/cache/s49imoni/SLAM_repo/fisheye_original/`
 
 Sessions: `2025-05-05`, `2025-07-07`, `2025-12-02`, all **floor 1**. Each has `cam0/` (front) and `cam1/` (back).
 
-Official calibration: `/cache/s49imoni/SLAM_repo/hilti-trimble-slam-challenge-2026/config/hilti_openvins/kalibr_imucam_chain.yaml`. It has a pinhole-equidistant model (= COLMAP `OPENCV_FISHEYE`, f ≈ 465 px) for the **unrotated** images. For the 180°-rotated images in COLMAP pixel convention: `cx' = W − 0.5 − cx`, `cy' = H − 0.5 − cy`; f and k1..k4 stay the same.
+### Ground-truth camera intrinsics
+
+Source: `/cache/s49imoni/SLAM_repo/hilti-trimble-slam-challenge-2026/config/hilti_openvins/kalibr_imucam_chain.yaml` (Kalibr, pinhole-equidistant = COLMAP `OPENCV_FISHEYE`, resolution 1472 × 1440).
+
+| | fx | fy | k1 | k2 | k3 | k4 |
+|---|---|---|---|---|---|---|
+| cam0 (front) | 465.30155 | 465.32304 | 0.02580072 | −0.01090924 | −0.00168995 | 0.00014767 |
+| cam1 (back) | 465.43630 | 465.47199 | 0.02472339 | −0.01075467 | −0.00161690 | 0.00013675 |
+
+Principal point:
+
+| | cx, cy (Kalibr, **unrotated** images) | cx, cy (COLMAP, **`_rotated`** images) |
+|---|---|---|
+| cam0 | 730.0456, 720.1427 | 741.4544, 719.3573 |
+| cam1 | 733.4364, 718.7409 | 738.0636, 720.7591 |
+
+- The rotated values use `cx' = W − 0.5 − cx`, `cy' = H − 0.5 − cy`. The 0.5 converts Kalibr's pixel-centre convention to COLMAP's. f and k1..k4 don't change under a 180° rotation.
+- COLMAP `OPENCV_FISHEYE` parameter order: `fx, fy, cx, cy, k1, k2, k3, k4`.
+- The same file also has the camera-IMU extrinsics (`T_cam_imu`) and a commented-out EUCM model. The equidistant model was fitted to the EUCM one, so it is least accurate near the edge of the image circle.
+- The distortion curve r(θ) peaks at θ ≈ 115° (799 px). Angles beyond that can't be represented (see issue 1).
 
 - File names: `cam0_<frame_idx 6 digits>_<timestamp_ns>.jpg`, e.g. `cam0_001000_10029095740000.jpg`.
 - Resolution: **1472 × 1440** (W × H, not square). Fisheye, about 200° FOV per lens, 30 Hz.
 - Size: 4 000 – 8 300 frames **per camera** per session. That's far too many for HLoc/3DGUT, so they need subsampling.
-- The operator's helmet is visible in every frame. It needs to be in the masks.
+- Static clutter is visible in every frame: the operator's helmet in cam0, the mounting rig and cables at the bottom of cam1. **Teammate 1's dynamic masks handle these**, not `render_mask.png`.
 
 ---
 
@@ -75,6 +94,8 @@ If `<session>/render_mask.png` exists, the loader combines it with every per-ima
 | Training | per-image mask AND `render_mask.png` |
 | Test-split eval (`render_all`) | the same combined mask. PSNR is computed over unmasked pixels only. |
 | `render_ply.py` / `batch_render.py` | `render_mask.png` (output is black outside it) |
+
+Ready-made for the `_rotated` Hilti images: `/cache/s49imoni/data/render_mask.png` (= cam0), plus `render_mask_cam0.png` and `render_mask_cam1.png` in the same folder. They are Hilti's `mask_cam*.png` inverted (white = keep) and rotated 180°, and contain the fisheye circle only. Copy one into each session folder as `render_mask.png`.
 
 So teammate 1 only has to provide the **dynamic** masks. The fisheye circle comes from this one file (for the new data: Hilti's `mask_cam0.png`, inverted and rotated 180°). Note: it's one file for both cameras, and the Hilti cam0/cam1 circles differ by a few pixels.
 
@@ -177,7 +198,7 @@ python render_ply.py --checkpoint <ckpt> --qw .. --qx .. --qy .. --qz .. \
      - The current 91° is actually *smaller* than the Hilti mask edge (93.7°).
      - The 93–110° ring is unsupervised, so renders must get the same mask before change detection.
 2. **Rotation vs. official calibration and GT.** The `_rotated` images are turned 180°. Hilti's calibration and GT poses are for the unrotated camera. Fine if HLoc estimates its own intrinsics; if anyone reuses Hilti's, use the formula in section 1, and the camera x/y axes flip. Hilti's `mask_cam*.png` must be rotated too.
-3. **Helmet in every frame.** It must be masked (or cropped), otherwise it ends up as floating Gaussians.
+3. **Helmet (cam0) and rig/cables (cam1) in every frame.** Teammate 1's masks must cover them; otherwise they end up as floating Gaussians. `render_mask.png` only covers the fisheye circle.
 4. **Frame count.** 8 000–16 000 images per session (vs. 180 in `align_t1`). Agree on a subsampling rate with teammate 2.
 
 **Code / workflow**
