@@ -29,21 +29,33 @@ def compute_max_angle(
     # ----------------------------
     w, h = resolution[0], resolution[1]
 
-    corners = np.array(
-        [
-            [0, 0],
-            [w, 0],
-            [0, h],
-            [w, h],
-        ],
-        dtype=np.float64,
-    )
+    # corners = np.array(
+    #     [
+    #         [0, 0],
+    #         [w, 0],
+    #         [0, h],
+    #         [w, h],
+    #     ],
+    #     dtype=np.float64,
+    # )
+    cx, cy = principal_point[0], principal_point[1]
+    fx, fy = focal_length[0], focal_length[1]
+
+    # Distance in pixels to the nearest image boundaries
+    radius_px_x = min(cx, w - cx)
+    radius_px_y = min(cy, h - cy)
+
+    # Use the active circle boundary (minimum distance to frame edge)
+    radius_px = min(radius_px_x, radius_px_y)
+
+    # Convert to normalized camera coordinates
+    max_r = radius_px / min(fx, fy)
 
     # ----------------------------
     # 2. Normalize to camera frame
     # ----------------------------
-    normalised = (corners - principal_point) / focal_length
-    max_r = np.max(np.linalg.norm(normalised, axis=1))     # max distance from principle point to image frame 
+    # normalised = (corners - principal_point) / focal_length
+    # max_r = np.max(np.linalg.norm(normalised, axis=1))     # max distance from principle point to image frame 
 
     # ----------------------------
     # 3. Convert coefficients

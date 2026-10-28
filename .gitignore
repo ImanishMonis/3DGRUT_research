@@ -48,3 +48,5 @@ commands.txt
 thirdparty/ppisp/
 
 custom_render/
+poses.json
+batch_render_result/
