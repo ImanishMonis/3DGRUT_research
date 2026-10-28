@@ -95,9 +95,13 @@ If `<session>/render_mask.png` exists, the loader combines it with every per-ima
 | Test-split eval (`render_all`) | the same combined mask. PSNR is computed over unmasked pixels only. |
 | `render_ply.py` / `batch_render.py` | `render_mask.png` (output is black outside it) |
 
-Ready-made for the `_rotated` Hilti images: `/cache/s49imoni/data/render_mask.png` (= cam0), plus `render_mask_cam0.png` and `render_mask_cam1.png` in the same folder. They are Hilti's `mask_cam*.png` inverted (white = keep) and rotated 180°, and contain the fisheye circle only. Copy one into each session folder as `render_mask.png`.
+Ready-made for the Hilti images: `/cache/s49imoni/data/render_mask.png`. It is Hilti's `mask_cam*.png` inverted (white = keep) and contains the fisheye circle only. Copy it into each session folder.
 
-So teammate 1 only has to provide the **dynamic** masks. The fisheye circle comes from this one file (for the new data: Hilti's `mask_cam0.png`, inverted and rotated 180°). Note: it's one file for both cameras, and the Hilti cam0/cam1 circles differ by a few pixels.
+- Hilti's cam0 and cam1 masks are **identical**: one circle, radius ≈ 729 px, centred exactly on the image centre (735.5, 719.5). So the same file works for both cameras, and the 180° rotation doesn't change it.
+- `render_mask_cam0.png` / `render_mask_cam1.png` in the same folder are the same image.
+- The circle is centred on the image, not on each camera's principal point (3–6 px off). That's harmless: the real image circle is ~795 px, so the mask stays well inside it.
+
+So teammate 1 only has to provide the **dynamic** masks. The fisheye circle comes from this one file, shared by both cameras.
 
 ---
 
@@ -190,14 +194,14 @@ python render_ply.py --checkpoint <ckpt> --qw .. --qx .. --qy .. --qz .. \
    - The 3DGUT tracer drops every Gaussian beyond `max_angle`, so **~12 % of the image (the outer ring) can never be rendered**. Unless the training masks exclude it, the loss still tries to fit that ring.
    - The original ncore version (farthest corner, 1034 px) can't work: Hilti's distortion polynomial r(θ) peaks at θ ≈ 115° / 799 px, so the corner radius is unreachable.
    - Fix options: (a) keep ~91° and mask out everything beyond that circle in the training masks; or (b) raise `max_angle` to ~105° (below the 115° peak) and mask only outside the true circle.
-   - Hilti provides `config/hilti_openvins/mask_cam{0,1}.png`. These have **white = invalid** (the opposite of ours), are for the **unrotated** images, and keep pixels up to ~730 px (**~93°**).
+   - Hilti provides `config/hilti_openvins/mask_cam{0,1}.png`. These have **white = invalid** (the opposite of ours), are identical for both cameras, and keep pixels up to ~730 px (**~93°**).
    - **Decision (2026-10-28): keep `compute_max_angle` as it is for now** and check the first run on the new data. If the mask edge shows dark/blurry bands, switch to the option below.
-   - **Fallback:** Hilti mask (inverted + rotated 180°, combined with the dynamic masks) and `max_angle = 110°`.
+   - **Fallback:** Hilti mask (`render_mask.png`, combined with the dynamic masks) and `max_angle = 110°`.
      - `max_angle` is only a cut-off, not a lens parameter. Rays inside the mask change by < 0.1° between 91° and 110°.
      - 110° stays below the 115° peak (recheck if HLoc refines k1..k4) and leaves a margin past the 93° mask edge.
      - The current 91° is actually *smaller* than the Hilti mask edge (93.7°).
      - The 93–110° ring is unsupervised, so renders must get the same mask before change detection.
-2. **Rotation vs. official calibration and GT.** The `_rotated` images are turned 180°. Hilti's calibration and GT poses are for the unrotated camera. Fine if HLoc estimates its own intrinsics; if anyone reuses Hilti's, use the formula in section 1, and the camera x/y axes flip. Hilti's `mask_cam*.png` must be rotated too.
+2. **Rotation vs. official calibration and GT.** The `_rotated` images are turned 180°. Hilti's calibration and GT poses are for the unrotated camera. Fine if HLoc estimates its own intrinsics; if anyone reuses Hilti's, use the formula in section 1, and the camera x/y axes flip.
 3. **Helmet (cam0) and rig/cables (cam1) in every frame.** Teammate 1's masks must cover them; otherwise they end up as floating Gaussians. `render_mask.png` only covers the fisheye circle.
 4. **Frame count.** 8 000–16 000 images per session (vs. 180 in `align_t1`). Agree on a subsampling rate with teammate 2.
 
